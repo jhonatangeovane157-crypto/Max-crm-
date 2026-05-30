@@ -72,6 +72,7 @@ export default function Channels() {
   const [qrLoading, setQrLoading] = useState(false);
   const [qrCode, setQrCode] = useState("");
   const [qrStatus, setQrStatus] = useState("qr_pending");
+  const [qrError, setQrError] = useState("");
 
   const [form, setForm] = useState(emptyForm());
 
@@ -319,6 +320,7 @@ export default function Channels() {
     setQrModalOpen(true);
     setQrCode(channel.qr_code || "");
     setQrStatus(channel.connection_status || channel.status || "qr_pending");
+    setQrError("");
     await generateQrCode(channel);
   }
 
@@ -326,6 +328,7 @@ export default function Channels() {
     setQrModalOpen(false);
     setQrCode("");
     setQrStatus("qr_pending");
+    setQrError("");
     setSelectedChannel(null);
   }
 
@@ -333,13 +336,15 @@ export default function Channels() {
     if (!channel?.id) return;
 
     setQrLoading(true);
+    setQrError("");
 
     try {
       const data = await connectInstance(channel);
       const nextQrCode = getQrCodeFromResponse(data);
 
       if (!nextQrCode) {
-        alert("A Evolution respondeu, mas nÃ£o retornou imagem de QR Code.");
+        setQrCode("");
+        setQrError("A Evolution respondeu, mas nao retornou imagem de QR Code.");
         return;
       }
 
@@ -359,7 +364,9 @@ export default function Channels() {
       loadChannels();
     } catch (error) {
       console.error(error);
-      alert(error.message || "Erro ao gerar QR Code.");
+      setQrCode("");
+      setQrStatus("error");
+      setQrError(error.message || "Erro ao gerar QR Code.");
     } finally {
       setQrLoading(false);
     }
@@ -373,6 +380,7 @@ export default function Channels() {
       const crmStatus = mapEvolutionState(getEvolutionState(data));
 
       setQrStatus(crmStatus);
+      setQrError("");
 
       if (crmStatus === "connected") {
         await supabase
@@ -389,6 +397,8 @@ export default function Channels() {
       }
     } catch (error) {
       console.error(error);
+      setQrStatus("error");
+      setQrError(error.message || "Erro ao consultar status da Evolution API.");
     }
   }, [selectedChannel, qrModalOpen, loadChannels]);
 
@@ -397,7 +407,7 @@ export default function Channels() {
 
     const statusInterval = setInterval(checkQrConnection, 5000);
     const refreshInterval = setInterval(() => {
-      if (qrStatus !== "connected") {
+      if (qrStatus !== "connected" && !qrError && !qrLoading) {
         generateQrCode(selectedChannel);
       }
     }, 25000);
@@ -406,7 +416,7 @@ export default function Channels() {
       clearInterval(statusInterval);
       clearInterval(refreshInterval);
     };
-  }, [qrModalOpen, selectedChannel, qrStatus, checkQrConnection, generateQrCode]);
+  }, [qrModalOpen, selectedChannel, qrStatus, qrError, qrLoading, checkQrConnection, generateQrCode]);
 
   return (
     <div className="min-h-screen bg-black text-white p-8">
@@ -549,6 +559,12 @@ export default function Channels() {
               {qrStatus === "connected" && (
                 <div className="mb-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-4 font-bold">
                   WhatsApp conectado com sucesso
+                </div>
+              )}
+
+              {qrError && (
+                <div className="mb-5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 p-4 text-sm font-medium">
+                  {qrError}
                 </div>
               )}
 

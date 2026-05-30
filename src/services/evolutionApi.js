@@ -87,14 +87,24 @@ export async function evolutionRequest(channel, path, method = "GET", body = nul
     throw new Error("API Key da Evolution API não configurada.");
   }
 
-  const response = await fetch(`${baseUrl}${getApiPath(path)}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      apikey: apiKey,
-    },
-    body: body ? JSON.stringify(body) : null,
-  });
+  let response;
+
+  try {
+    response = await fetch(`${baseUrl}${getApiPath(path)}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        apikey: apiKey,
+      },
+      body: body ? JSON.stringify(body) : null,
+    });
+  } catch (error) {
+    console.error(error);
+    throw new Error(
+      `Nao foi possivel conectar na Evolution API em ${baseUrl}. Verifique se o dominio usa HTTPS com certificado SSL valido e se o CORS esta liberado.`,
+      { cause: error }
+    );
+  }
 
   if (!response.ok) {
     const text = await response.text();
