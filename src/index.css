@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  background: #050505;
+  color: white;
+  font-family: Inter, sans-serif;
+}
+
+.gold-text {
+  background: linear-gradient(135deg, #f4c842, #b8941f);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.glass-card-gold {
+  background: rgba(212, 175, 55, 0.08);
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  box-shadow: 0 0 40px rgba(212, 175, 55, 0.08);
+}
