@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Wifi,
   WifiOff,
@@ -20,6 +20,7 @@ import {
   getConnectionState,
   getEvolutionConfig,
   getEvolutionWebhookUrl,
+  getEvolutionState,
   getQrCodeFromResponse,
   mapEvolutionState,
   setWebhook,
@@ -70,6 +71,7 @@ export default function Channels() {
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [qrLoading, setQrLoading] = useState(false);
   const [qrCode, setQrCode] = useState("");
+  const [qrStatus, setQrStatus] = useState("qr_pending");
 
   const [form, setForm] = useState(emptyForm());
 
@@ -262,12 +264,7 @@ export default function Channels() {
 
     try {
       const data = await getConnectionState(channel);
-      const crmStatus = mapEvolutionState(
-        data?.instance?.state ||
-          data?.state ||
-          data?.connectionState ||
-          data?.status
-      );
+      const crmStatus = mapEvolutionState(getEvolutionState(data));
 
       const { error } = await supabase
         .from("channels")
@@ -321,16 +318,18 @@ export default function Channels() {
     setSelectedChannel(channel);
     setQrModalOpen(true);
     setQrCode(channel.qr_code || "");
+    setQrStatus(channel.connection_status || channel.status || "qr_pending");
     await generateQrCode(channel);
   }
 
   function closeQrCode() {
     setQrModalOpen(false);
     setQrCode("");
+    setQrStatus("qr_pending");
     setSelectedChannel(null);
   }
 
-  async function generateQrCode(channel = selectedChannel) {
+  const generateQrCode = useCallback(async (channel = selectedChannel) => {
     if (!channel?.id) return;
 
     setQrLoading(true);
@@ -340,11 +339,12 @@ export default function Channels() {
       const nextQrCode = getQrCodeFromResponse(data);
 
       if (!nextQrCode) {
-        alert("A Evolution respondeu, mas não retornou imagem de QR Code.");
+        alert("A Evolution respondeu, mas nÃ£o retornou imagem de QR Code.");
         return;
       }
 
       setQrCode(nextQrCode);
+      setQrStatus("qr_pending");
 
       await supabase
         .from("channels")
@@ -363,7 +363,50 @@ export default function Channels() {
     } finally {
       setQrLoading(false);
     }
-  }
+  }, [selectedChannel, loadChannels]);
+
+  const checkQrConnection = useCallback(async () => {
+    if (!selectedChannel?.id || !qrModalOpen) return;
+
+    try {
+      const data = await getConnectionState(selectedChannel);
+      const crmStatus = mapEvolutionState(getEvolutionState(data));
+
+      setQrStatus(crmStatus);
+
+      if (crmStatus === "connected") {
+        await supabase
+          .from("channels")
+          .update({
+            status: "connected",
+            connection_status: "connected",
+            last_connection_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", selectedChannel.id);
+
+        loadChannels();
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }, [selectedChannel, qrModalOpen, loadChannels]);
+
+  useEffect(() => {
+    if (!qrModalOpen || !selectedChannel?.id) return;
+
+    const statusInterval = setInterval(checkQrConnection, 5000);
+    const refreshInterval = setInterval(() => {
+      if (qrStatus !== "connected") {
+        generateQrCode(selectedChannel);
+      }
+    }, 25000);
+
+    return () => {
+      clearInterval(statusInterval);
+      clearInterval(refreshInterval);
+    };
+  }, [qrModalOpen, selectedChannel, qrStatus, checkQrConnection, generateQrCode]);
 
   return (
     <div className="min-h-screen bg-black text-white p-8">
@@ -402,7 +445,7 @@ export default function Channels() {
           value={stats.disconnected}
           icon={WifiOff}
         />
-        <MetricCard title="Remoção" value={isAdmin() ? "Admin" : "Bloq."} icon={Trash2} />
+        <MetricCard title="RemoÃ§Ã£o" value={isAdmin() ? "Admin" : "Bloq."} icon={Trash2} />
       </div>
 
       {loading ? (
@@ -417,7 +460,7 @@ export default function Channels() {
             <div>
               <h2 className="text-2xl font-bold">Novos canais</h2>
               <p className="text-zinc-500 text-sm">
-                Cadastre e remova canais conforme a autorização do usuário.
+                Cadastre e remova canais conforme a autorizaÃ§Ã£o do usuÃ¡rio.
               </p>
             </div>
           </div>
@@ -478,7 +521,7 @@ export default function Channels() {
           onChange={handleChange}
           onClose={closeConfig}
           onSubmit={handleUpdate}
-          submitLabel="Salvar configurações"
+          submitLabel="Salvar configuraÃ§Ãµes"
         />
       )}
 
@@ -489,7 +532,7 @@ export default function Channels() {
               <div>
                 <h2 className="text-2xl font-bold">QR Code</h2>
                 <p className="text-zinc-500 text-sm mt-1">
-                  Instância: {selectedChannel.instance_name || "Não configurada"}
+                  InstÃ¢ncia: {selectedChannel.instance_name || "NÃ£o configurada"}
                 </p>
               </div>
 
@@ -503,6 +546,12 @@ export default function Channels() {
             </div>
 
             <div className="rounded-3xl bg-black border border-zinc-800 p-6 text-center">
+              {qrStatus === "connected" && (
+                <div className="mb-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-4 font-bold">
+                  WhatsApp conectado com sucesso
+                </div>
+              )}
+
               <div className="w-[340px] max-w-full aspect-square mx-auto bg-white rounded-2xl flex items-center justify-center text-black p-5">
                 {qrLoading ? (
                   <div className="text-sm font-bold text-zinc-700">
@@ -520,7 +569,7 @@ export default function Channels() {
               </div>
 
               <p className="text-sm text-zinc-400 mt-5">
-                Abra o WhatsApp no celular, toque em aparelhos conectados e escaneie com boa iluminação.
+                O QR atualiza automaticamente. Escaneie em poucos segundos em um ambiente com boa iluminação.
               </p>
             </div>
 
@@ -584,13 +633,13 @@ function ChannelCard({
         <Info label="Tipo" value={channel?.type || "custom"} />
         <Info
           label="Identificador"
-          value={channel?.phone_number || channel?.instance_name || "Não informado"}
+          value={channel?.phone_number || channel?.instance_name || "NÃ£o informado"}
         />
-        <Info label="Base URL" value={channel?.base_url || "Não configurada"} />
-        <Info label="Webhook" value={channel?.webhook_url || "Não configurado"} />
+        <Info label="Base URL" value={channel?.base_url || "NÃ£o configurada"} />
+        <Info label="Webhook" value={channel?.webhook_url || "NÃ£o configurado"} />
         <Info label="Status" value={statusLabel(status)} />
         <Info
-          label="Última atualização"
+          label="Ãšltima atualizaÃ§Ã£o"
           value={formatDate(channel.updated_at || channel.created_at)}
         />
       </div>
@@ -691,7 +740,7 @@ function ChannelModal({
           />
 
           <Input
-            label="Nome da instância"
+            label="Nome da instÃ¢ncia"
             name="instance_name"
             value={form.instance_name}
             onChange={onChange}
@@ -814,3 +863,4 @@ function Input({ label, name, value, onChange, placeholder }) {
     </div>
   );
 }
+

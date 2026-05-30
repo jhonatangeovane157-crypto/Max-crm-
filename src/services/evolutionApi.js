@@ -29,6 +29,10 @@ export function cleanPhoneNumber(phone) {
 
 export function normalizeQrImage(value) {
   if (!value) return "";
+  if (typeof value === "object") {
+    return normalizeQrImage(value.base64 || value.qrcode || value.qr || value.code);
+  }
+  if (typeof value !== "string") return "";
   if (value.startsWith("data:image")) return value;
   return `data:image/png;base64,${value}`;
 }
@@ -42,6 +46,9 @@ export function getQrCodeFromResponse(data) {
       data?.pairingCode ||
       data?.data?.base64 ||
       data?.data?.qrcode ||
+      data?.data?.qrcode?.base64 ||
+      data?.qrcode?.base64 ||
+      data?.qrcode?.code ||
       data?.data?.qr ||
       ""
   );
