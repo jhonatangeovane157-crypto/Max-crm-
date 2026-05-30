@@ -27,6 +27,26 @@ export function cleanPhoneNumber(phone) {
   return cleaned.startsWith("55") ? cleaned : `55${cleaned}`;
 }
 
+export function normalizeQrImage(value) {
+  if (!value) return "";
+  if (value.startsWith("data:image")) return value;
+  return `data:image/png;base64,${value}`;
+}
+
+export function getQrCodeFromResponse(data) {
+  return normalizeQrImage(
+    data?.base64 ||
+      data?.qrcode ||
+      data?.qr ||
+      data?.code ||
+      data?.pairingCode ||
+      data?.data?.base64 ||
+      data?.data?.qrcode ||
+      data?.data?.qr ||
+      ""
+  );
+}
+
 export function getEvolutionWebhookUrl() {
   if (DEFAULT_WEBHOOK_URL) return DEFAULT_WEBHOOK_URL;
   if (!PUBLIC_APP_URL) return "";

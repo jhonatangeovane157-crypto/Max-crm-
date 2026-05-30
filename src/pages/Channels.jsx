@@ -10,14 +10,17 @@ import {
   Trash2,
   Activity,
   Copy,
+  QrCode,
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/useAuth";
 import {
+  connectInstance,
   getConnectionState,
   getEvolutionConfig,
   getEvolutionWebhookUrl,
+  getQrCodeFromResponse,
   mapEvolutionState,
   setWebhook,
 } from "@/services/evolutionApi";
@@ -64,6 +67,9 @@ export default function Channels() {
   const [selectedChannel, setSelectedChannel] = useState(null);
   const [saving, setSaving] = useState(false);
   const [testingChannelId, setTestingChannelId] = useState(null);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrCode, setQrCode] = useState("");
 
   const [form, setForm] = useState(emptyForm());
 
@@ -311,6 +317,54 @@ export default function Channels() {
     }
   }
 
+  async function openQrCode(channel) {
+    setSelectedChannel(channel);
+    setQrModalOpen(true);
+    setQrCode(channel.qr_code || "");
+    await generateQrCode(channel);
+  }
+
+  function closeQrCode() {
+    setQrModalOpen(false);
+    setQrCode("");
+    setSelectedChannel(null);
+  }
+
+  async function generateQrCode(channel = selectedChannel) {
+    if (!channel?.id) return;
+
+    setQrLoading(true);
+
+    try {
+      const data = await connectInstance(channel);
+      const nextQrCode = getQrCodeFromResponse(data);
+
+      if (!nextQrCode) {
+        alert("A Evolution respondeu, mas não retornou imagem de QR Code.");
+        return;
+      }
+
+      setQrCode(nextQrCode);
+
+      await supabase
+        .from("channels")
+        .update({
+          qr_code: nextQrCode,
+          status: "qr_pending",
+          connection_status: "qr_pending",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", channel.id);
+
+      loadChannels();
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Erro ao gerar QR Code.");
+    } finally {
+      setQrLoading(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-black text-white p-8">
       <div className="flex items-center justify-between mb-8">
@@ -393,6 +447,7 @@ export default function Channels() {
                   onConfig={() => openConfig(channel)}
                   onTest={() => testEvolutionChannel(channel)}
                   onWebhook={() => configureWebhook(channel)}
+                  onQr={() => openQrCode(channel)}
                   onDelete={() => deleteChannel(channel)}
                 />
               ))}
@@ -426,6 +481,69 @@ export default function Channels() {
           submitLabel="Salvar configurações"
         />
       )}
+
+      {qrModalOpen && selectedChannel && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-5">
+          <div className="w-full max-w-xl bg-zinc-950 border border-zinc-800 rounded-3xl p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold">QR Code</h2>
+                <p className="text-zinc-500 text-sm mt-1">
+                  Instância: {selectedChannel.instance_name || "Não configurada"}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeQrCode}
+                className="w-10 h-10 rounded-xl bg-zinc-900 hover:bg-zinc-800 flex items-center justify-center"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="rounded-3xl bg-black border border-zinc-800 p-6 text-center">
+              <div className="w-[340px] max-w-full aspect-square mx-auto bg-white rounded-2xl flex items-center justify-center text-black p-5">
+                {qrLoading ? (
+                  <div className="text-sm font-bold text-zinc-700">
+                    Gerando QR Code...
+                  </div>
+                ) : qrCode ? (
+                  <img
+                    src={qrCode}
+                    alt="QR Code WhatsApp"
+                    className="w-full h-full object-contain image-render-auto"
+                  />
+                ) : (
+                  <QrCode className="text-zinc-500" size={120} />
+                )}
+              </div>
+
+              <p className="text-sm text-zinc-400 mt-5">
+                Abra o WhatsApp no celular, toque em aparelhos conectados e escaneie com boa iluminação.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => generateQrCode()}
+                disabled={qrLoading}
+                className="px-5 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 disabled:opacity-60"
+              >
+                {qrLoading ? "Gerando..." : "Gerar novamente"}
+              </button>
+
+              <button
+                onClick={closeQrCode}
+                className="px-5 py-3 rounded-xl bg-yellow-500 hover:bg-yellow-400 text-black font-bold"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -437,6 +555,7 @@ function ChannelCard({
   onConfig,
   onTest,
   onWebhook,
+  onQr,
   onDelete,
 }) {
   const status = channel.connection_status || channel.status || "disconnected";
@@ -492,6 +611,14 @@ function ChannelCard({
         >
           <Settings size={17} />
           Configurar
+        </button>
+
+        <button
+          onClick={onQr}
+          className="flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 px-4 py-3 rounded-xl transition"
+        >
+          <QrCode size={17} />
+          QR Code
         </button>
 
         <button
